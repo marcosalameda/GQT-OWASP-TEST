@@ -69,4 +69,40 @@ pipeline {
       }
     }
   }
+
+  post {
+    always {
+      script {
+        def reportFile = "${env.WORKSPACE}/zap-auth-report.json"
+
+        if (!fileExists(reportFile)) {
+          echo "⚠️ ZAP report not found, marking build UNSTABLE"
+          currentBuild.result = 'UNSTABLE'
+          return
+        }
+
+        def report = readJSON file: reportFile
+        def alerts = report.alerts ?: []
+
+        int high = alerts.count { it.riskcode == '3' }
+        int medium = alerts.count { it.riskcode == '2' }
+        int low = alerts.count { it.riskcode == '1' }
+
+        echo "🛡️ ZAP Alert Summary:"
+        echo "  🔴 High:   ${high}"
+        echo "  🟠 Medium: ${medium}"
+        echo "  🟡 Low:    ${low}"
+
+        if (high > 0) {
+          currentBuild.result = 'FAILURE'
+          echo "❌ Build FAILED due to HIGH risk vulnerabilities"
+        } else if (medium > 0) {
+          currentBuild.result = 'UNSTABLE'
+          echo "⚠️ Build UNSTABLE due to MEDIUM risk vulnerabilities"
+        } else {
+          echo "✅ Build SUCCESS (only LOW / INFO issues)"
+        }
+      }
+    }
+  }
 }
