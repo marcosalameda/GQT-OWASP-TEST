@@ -16,7 +16,8 @@ pipeline {
 
           echo "▶ Installing Node dependencies"
           npm install
-          npx playwright install
+          npx playwright install chromium
+          export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=1
 
           echo "▶ Starting ZAP proxy"
           docker rm -f zap-auth-proxy || true
@@ -32,7 +33,18 @@ pipeline {
               -config proxy.port=8080 \
               -config api.disablekey=true
 
-          sleep 15
+          echo "▶ Waiting for ZAP proxy to be ready"
+          for i in {1..30}; do
+            if curl -s http://localhost:8080 >/dev/null; then
+              echo "✔ ZAP proxy is up"
+              break
+            fi
+            sleep 2
+          done
+
+          export HTTP_PROXY=http://localhost:8080
+          export HTTPS_PROXY=http://localhost:8080
+          export NO_PROXY=localhost,127.0.0.1
 
           echo "▶ Running Playwright login + browse"
           cd zap-scans/scripts
