@@ -8,6 +8,7 @@ pipeline {
   }
 
   stages {
+
     stage('Authenticated Scan (Playwright + ZAP)') {
       steps {
         sh '''
@@ -15,7 +16,7 @@ pipeline {
 
           echo "▶ Installing Node dependencies"
           npm install
-          npx playwright install --with-deps
+          npx playwright install
 
           echo "▶ Starting ZAP proxy"
           docker rm -f zap-auth-proxy || true
