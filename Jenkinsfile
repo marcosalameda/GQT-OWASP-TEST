@@ -82,11 +82,18 @@ pipeline {
         }
 
         def report = readJSON file: reportFile
-        def alerts = report.alerts ?: []
 
-        int high = alerts.count { it.riskcode == '3' }
-        int medium = alerts.count { it.riskcode == '2' }
-        int low = alerts.count { it.riskcode == '1' }
+        // ZAP JSON structure REAL: site[].alerts[]
+        def allAlerts = []
+        report.site?.each { site ->
+          site.alerts?.each { alert ->
+            allAlerts << alert
+          }
+        }
+
+        int high = allAlerts.count { it.riskcode.toString() == '3' }
+        int medium = allAlerts.count { it.riskcode.toString() == '2' }
+        int low = allAlerts.count { it.riskcode.toString() == '1' }
 
         echo "🛡️ ZAP Alert Summary:"
         echo "  🔴 High:   ${high}"
