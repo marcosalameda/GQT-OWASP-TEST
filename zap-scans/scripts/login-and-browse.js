@@ -2,7 +2,7 @@ const { chromium } = require('playwright');
 
 (async () => {
   /* =====================================================
-     CONFIGURACIÓN
+     CONFIGURATION
      ===================================================== */
 
   const USER = process.env.QUIDGEST_USER;
@@ -13,7 +13,7 @@ const { chromium } = require('playwright');
     process.exit(1);
   }
 
-  // Activar proxy ZAP solo cuando se indique
+  // Enable ZAP proxy only when explicitly requested
   const useProxy = process.env.USE_ZAP_PROXY === 'true';
 
   const contextOptions = {
@@ -28,7 +28,7 @@ const { chromium } = require('playwright');
   }
 
   /* =====================================================
-     LANZAR NAVEGADOR
+     LAUNCH BROWSER
      ===================================================== */
 
   const browser = await chromium.launch({ headless: true });
@@ -44,23 +44,23 @@ const { chromium } = require('playwright');
   console.log('▶ Opening login page...');
   await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });
 
-  // Esperar a que el formulario esté realmente disponible
+  // Wait until the login form is fully available
   await page.waitForSelector('input[type="password"]', { timeout: 120000 });
 
-  // Rellenar usuario (primer input de texto/email visible)
+  // Fill username (first visible text/email input)
   await page.locator('input[type="text"], input[type="email"]').first().fill(USER);
 
-  // Rellenar password
+  // Fill password
   await page.locator('input[type="password"]').fill(PASS);
 
-  // Click en el botón visible del formulario
+  // Click the visible login button
   await page.locator('#login-btn').click();
 
-  // Dejar tiempo para establecer la sesión
+  // Allow some time for the session to be established
   await page.waitForTimeout(5000);
 
   /* =====================================================
-     NAVEGACIÓN AUTENTICADA (BASELINE)
+     AUTHENTICATED NAVIGATION (BASELINE)
      ===================================================== */
 
   const baseHash = `${BASE_URL}#`;
@@ -68,7 +68,7 @@ const { chromium } = require('playwright');
     '/dashboard',
     '/home',
     '/list'
-    // 👉 añade más rutas cuando quieras:
+    // 👉 add more routes whenever needed:
     // '/details/1',
     // '/reports',
     // '/admin'
@@ -82,14 +82,14 @@ const { chromium } = require('playwright');
   }
 
   /* =====================================================
-     VALIDACIÓN DE SESIÓN
+     SESSION VALIDATION
      ===================================================== */
 
   const cookies = await context.cookies();
   const authCookie = cookies.find(c => c.name.toLowerCase().includes('aspxauth'));
 
   if (authCookie) {
-    console.log('✅ Sesión autenticada correctamente');
+    console.log('✅ Authenticated session successfully established');
   } else {
     console.error('❌ Authentication cookie not found');
   }
