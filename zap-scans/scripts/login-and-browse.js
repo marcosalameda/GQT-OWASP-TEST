@@ -69,7 +69,6 @@ const { chromium } = require('playwright');
     '/home',
     '/list'
     // add more routes whenever needed:
-    '/#/en-US/0/GQT/menu/GQT_111',
     // '/reports',
     // '/admin'
   ];
