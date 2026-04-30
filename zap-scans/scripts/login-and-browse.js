@@ -68,7 +68,7 @@ const { chromium } = require('playwright');
     '/dashboard',
     '/home',
     '/list'
-    // 👉 add more routes whenever needed:
+    // add more routes whenever needed:
     // '/details/1',
     // '/reports',
     // '/admin'
