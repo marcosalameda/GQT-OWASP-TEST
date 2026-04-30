@@ -67,7 +67,9 @@ const { chromium } = require('playwright');
   const routes = [
     '/dashboard',
     '/home',
-    '/list'
+    '/list',
+    '/admin',
+    '/menu'
     // add more routes whenever needed:
     // '/reports',
     // '/admin'
