@@ -13,6 +13,9 @@ const { chromium } = require('playwright');
     process.exit(1);
   }
 
+  const BASE_URL = 'https://jenkinsvm.quidgest.pt/gqt_vertical_vue/';
+  const LOGIN_URL = BASE_URL; // login page is base SPA entry
+
   // Enable ZAP proxy only when explicitly requested
   const useProxy = process.env.USE_ZAP_PROXY === 'true';
 
@@ -39,35 +42,39 @@ const { chromium } = require('playwright');
      LOGIN
      ===================================================== */
 
-  const BASE_URL = 'https://jenkinsvm.quidgest.pt/gqt_vertical_vue/';
-
   console.log('▶ Opening login page...');
-  await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });
+  await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded' });
+  await page.waitForLoadState('networkidle');
 
-  // Wait until the login form is fully available
-await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded' });
-await page.waitForLoadState('networkidle');
+  // Screenshot for diagnostics (useful if Jenkins fails)
+  await page.screenshot({ path: 'login-error.png', fullPage: true });
 
-  
+  // Wait for password field (robust selector)
+  await page.waitForSelector(
+    'input[type="password"], input[name*="pass"], input[id*="pass"]',
+    { timeout: 180000 }
+  );
 
-await page.screenshot({ path: 'login-error.png', fullPage: true });
+  // Fill username
+  await page
+    .locator('input[type="text"], input[type="email"]')
+    .first()
+    .fill(USER);
 
-await page.waitForSelector(
-  'input[type="password"], input[name*="pass"], input[id*="pass"]',
-  { timeout: 180000 }
-);
+  // Fill password (robust)
+  await page
+    .locator('input[type="password"], input[name*="pass"], input[id*="pass"]')
+    .first()
+    .fill(PASS);
 
-  // Fill username (first visible text/email input)
-  await page.locator('input[type="text"], input[type="email"]').first().fill(USER);
+  // Submit login form (robust button selector)
+  await page
+    .locator('button[type="submit"], button:has-text("Log"), button:has-text("Entrar")')
+    .first()
+    .click();
 
-  // Fill password
-  await page.locator('input[type="password"]').fill(PASS);
-
-  // Click the visible login button
-  await page.locator('#login-btn').click();
-
-  // Allow some time for the session to be established
-  await page.waitForTimeout(5000);
+  // Wait for post-login navigation
+  await page.waitForLoadState('networkidle');
 
   /* =====================================================
      AUTHENTICATED NAVIGATION (BASELINE)
@@ -80,9 +87,6 @@ await page.waitForSelector(
     '/list',
     '/admin',
     '/menu'
-    // add more routes whenever needed:
-    // '/reports',
-    // '/admin'
   ];
 
   console.log('▶ Browsing authenticated routes...');
@@ -97,7 +101,9 @@ await page.waitForSelector(
      ===================================================== */
 
   const cookies = await context.cookies();
-  const authCookie = cookies.find(c => c.name.toLowerCase().includes('aspxauth'));
+  const authCookie = cookies.find(c =>
+    c.name.toLowerCase().includes('aspxauth')
+  );
 
   if (authCookie) {
     console.log('✅ Authenticated session successfully established');
