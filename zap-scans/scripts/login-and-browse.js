@@ -45,8 +45,13 @@ const { chromium } = require('playwright');
   await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });
 
   // Wait until the login form is fully available
-  await page.waitForSelector('input[type="password"]', { timeout: 120000 });
+await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded' });
+await page.waitForLoadState('networkidle');
 
+await page.waitForSelector(
+  'input[type="password"], input[name*="pass"], input[id*="pass"]',
+  { timeout: 180000 }
+);
   // Fill username (first visible text/email input)
   await page.locator('input[type="text"], input[type="email"]').first().fill(USER);
 
