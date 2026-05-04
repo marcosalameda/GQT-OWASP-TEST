@@ -48,10 +48,15 @@ const { chromium } = require('playwright');
 await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded' });
 await page.waitForLoadState('networkidle');
 
+  
+
+await page.screenshot({ path: 'login-error.png', fullPage: true });
+
 await page.waitForSelector(
   'input[type="password"], input[name*="pass"], input[id*="pass"]',
   { timeout: 180000 }
 );
+
   // Fill username (first visible text/email input)
   await page.locator('input[type="text"], input[type="email"]').first().fill(USER);
 
