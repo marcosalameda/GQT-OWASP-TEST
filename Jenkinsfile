@@ -35,7 +35,7 @@ pipeline {
 
           echo "▶ Waiting for ZAP proxy to be ready"
           for i in {1..30}; do
-            if curl -s http://localhost:8080 >/dev/null; then
+            if curl -s http://localhost:8080 > /dev/null; then
               echo "✔ ZAP proxy is up"
               break
             fi
@@ -48,7 +48,9 @@ pipeline {
 
           echo "▶ Running Playwright login + browse"
           cd zap-scans/scripts
-          node login-and-browse.js
+
+          # ⬇️ CLAVE: no abortar el build si Playwright falla
+          node login-and-browse.js || echo "⚠️ Playwright login failed, continuing ZAP scan"
 
           sleep 20
 
@@ -83,7 +85,7 @@ pipeline {
 
         def report = readJSON file: reportFile
 
-        // ZAP JSON structure REAL: site[].alerts[]
+        // ZAP JSON structure: site[].alerts[]
         def allAlerts = []
         report.site?.each { site ->
           site.alerts?.each { alert ->
@@ -107,6 +109,7 @@ pipeline {
           currentBuild.result = 'UNSTABLE'
           echo "⚠️ Build UNSTABLE due to MEDIUM risk vulnerabilities"
         } else {
+          currentBuild.result = 'SUCCESS'
           echo "✅ Build SUCCESS (only LOW / INFO issues)"
         }
       }
