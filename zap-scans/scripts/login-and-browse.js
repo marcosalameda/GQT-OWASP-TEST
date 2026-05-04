@@ -14,7 +14,7 @@ const { chromium } = require('playwright');
   }
 
   const BASE_URL = 'https://jenkinsvm.quidgest.pt/gqt_vertical_vue/';
-  const LOGIN_URL = BASE_URL; // login page is base SPA entry
+  const LOGIN_URL = BASE_URL;
 
   // Enable ZAP proxy only when explicitly requested
   const useProxy = process.env.USE_ZAP_PROXY === 'true';
@@ -39,45 +39,59 @@ const { chromium } = require('playwright');
   const page = await context.newPage();
 
   /* =====================================================
-     LOGIN
+     LOGIN (ROBUST + IFRAME AWARE)
      ===================================================== */
 
   console.log('▶ Opening login page...');
   await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded' });
   await page.waitForLoadState('networkidle');
 
-  // Screenshot for diagnostics (useful if Jenkins fails)
+  // Screenshot for diagnostics
   await page.screenshot({ path: 'login-error.png', fullPage: true });
 
-  // Wait for password field (robust selector)
-  await page.waitForSelector(
-    'input[type="password"], input[name*="pass"], input[id*="pass"]',
+  // Detect iframe if present
+  let loginContext = page;
+  const frames = page.frames();
+
+  if (frames.length > 1) {
+    console.log('▶ Login iframe detected');
+    const candidate = frames.find(f =>
+      f.url().startsWith(LOGIN_URL) || f.url().includes('login')
+    );
+    if (candidate) {
+      loginContext = candidate;
+    }
+  }
+
+  // Wait for password field (very tolerant selector)
+  await loginContext.waitForSelector(
+    'input[type="password"], input[name*="pass"], input[id*="pass"], input[autocomplete*="password"]',
     { timeout: 180000 }
   );
 
   // Fill username
-  await page
+  await loginContext
     .locator('input[type="text"], input[type="email"]')
     .first()
     .fill(USER);
 
-  // Fill password (robust)
-  await page
-    .locator('input[type="password"], input[name*="pass"], input[id*="pass"]')
+  // Fill password
+  await loginContext
+    .locator('input[type="password"], input[name*="pass"], input[id*="pass"], input[autocomplete*="password"]')
     .first()
     .fill(PASS);
 
-  // Submit login form (robust button selector)
-  await page
+  // Submit login
+  await loginContext
     .locator('button[type="submit"], button:has-text("Log"), button:has-text("Entrar")')
     .first()
     .click();
 
-  // Wait for post-login navigation
+  // Wait for authenticated state
   await page.waitForLoadState('networkidle');
 
   /* =====================================================
-     AUTHENTICATED NAVIGATION (BASELINE)
+     AUTHENTICATED NAVIGATION (BASELINE TRAFFIC FOR ZAP)
      ===================================================== */
 
   const baseHash = `${BASE_URL}#`;
