@@ -18,49 +18,41 @@ pipeline {
 
         stage('Authenticated Scan (Playwright + ZAP)') {
             steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'QUI_DGEST_CREDS',
-                        usernameVariable: 'QUIDGEST_USER',
-                        passwordVariable: 'QUIDGEST_PASS'
-                    )
-                ]) {
-                    sh '''
-                        set -e
+                sh '''
+                    set -e
 
-                        echo "▶ Installing Node dependencies"
-                        npm install
+                    echo "▶ Installing Node dependencies"
+                    npm install
 
-                        npx playwright install chromium
+                    npx playwright install chromium
 
-                        echo "▶ Starting ZAP proxy"
-                        docker rm -f zap-auth-proxy || true
-                        docker run -d \
-                          --name zap-auth-proxy \
-                          --network host \
-                          ghcr.io/zaproxy/zaproxy:stable \
-                          zap.sh -daemon \
-                          -host 0.0.0.0 \
-                          -port 8080 \
-                          -config api.disablekey=true
+                    echo "▶ Starting ZAP proxy"
+                    docker rm -f zap-auth-proxy || true
+                    docker run -d \
+                      --name zap-auth-proxy \
+                      --network host \
+                      ghcr.io/zaproxy/zaproxy:stable \
+                      zap.sh -daemon \
+                      -host 0.0.0.0 \
+                      -port 8080 \
+                      -config api.disablekey=true
 
-                        echo "▶ Waiting for ZAP proxy to be ready"
-                        for i in {1..30}; do
-                          curl -s http://localhost:8080 && break
-                          sleep 2
-                        done
+                    echo "▶ Waiting for ZAP proxy"
+                    for i in {1..30}; do
+                      curl -s http://localhost:8080 && break
+                      sleep 2
+                    done
 
-                        echo "▶ Running Playwright login + browse"
-                        cd zap-scans/scripts
-                        node login-and-browse.js || echo "⚠️ Playwright login failed, continuing ZAP scan"
+                    echo "▶ Running Playwright login + browse (env creds)"
+                    cd zap-scans/scripts
+                    node login-and-browse.js || echo "⚠️ Playwright login failed"
 
-                        sleep 20
+                    sleep 20
 
-                        echo "▶ Fetching ZAP alerts JSON (safe)"
-                        curl -s http://localhost:8080/JSON/core/view/alerts/ \
-                          -o "$WORKSPACE/zap-auth-report.json" || true
-                    '''
-                }
+                    echo "▶ Fetching ZAP alerts JSON"
+                    curl -s http://localhost:8080/JSON/core/view/alerts/ \
+                      -o "$WORKSPACE/zap-auth-report.json" || true
+                '''
             }
         }
     }
@@ -83,14 +75,13 @@ pipeline {
                     echo "  🟡 Low:    ${lows}"
 
                     if (highs > 0) {
-                        error("❌ Build FAILED due to HIGH risk vulnerabilities")
+                        error("❌ Build FAILED (HIGH findings)")
                     }
-
                     if (mediums > 0) {
-                        unstable("⚠️ Build UNSTABLE due to MEDIUM risk vulnerabilities")
+                        unstable("⚠️ Build UNSTABLE (MEDIUM findings)")
                     }
                 } else {
-                    echo "⚠️ ZAP report not available or empty"
+                    echo "⚠️ ZAP report not available"
                 }
             }
         }
