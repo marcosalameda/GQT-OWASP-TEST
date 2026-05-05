@@ -71,8 +71,6 @@ pipeline {
           sleep 20
 
           echo "▶ Generating ZAP reports"
-          curl http://localhost:8080/OTHER/core/other/htmlreport/ \
-            > "$WORKSPACE/zap-auth-report.html"
 
           curl http://localhost:8080/OTHER/core/other/jsonreport/ \
             > "$WORKSPACE/zap-auth-report.json"
