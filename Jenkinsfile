@@ -1,6 +1,10 @@
 pipeline {
   agent { label 'docker' }
 
+  options {
+    skipDefaultCheckout(true)
+  }
+
   environment {
     QUIDGEST_USER = credentials('quidgest-user')
     QUIDGEST_PASS = credentials('quidgest-pass')
@@ -8,6 +12,19 @@ pipeline {
   }
 
   stages {
+
+    stage('Checkout') {
+      steps {
+        checkout([
+          $class: 'GitSCM',
+          branches: [[name: '*/main']],
+          userRemoteConfigs: [[
+            url: 'https://github.com/marcosalameda/GQT-OWASP-TEST.git'
+          ]],
+          gitTool: 'jgit'
+        ])
+      }
+    }
 
     stage('Authenticated Scan (Playwright + ZAP)') {
       steps {
@@ -49,7 +66,6 @@ pipeline {
           echo "▶ Running Playwright login + browse"
           cd zap-scans/scripts
 
-          # ⬇️ CLAVE: no abortar el build si Playwright falla
           node login-and-browse.js || echo "⚠️ Playwright login failed, continuing ZAP scan"
 
           sleep 20
@@ -85,7 +101,6 @@ pipeline {
 
         def report = readJSON file: reportFile
 
-        // ZAP JSON structure: site[].alerts[]
         def allAlerts = []
         report.site?.each { site ->
           site.alerts?.each { alert ->
