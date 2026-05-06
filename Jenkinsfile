@@ -2,10 +2,8 @@ pipeline {
     agent { label 'docker' }
 
     environment {
-        HTTP_PROXY  = 'http://localhost:8080'
-        HTTPS_PROXY = 'http://localhost:8080'
-        NO_PROXY    = 'localhost,127.0.0.1'
         PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = '1'
+        // NO usar HTTP_PROXY / HTTPS_PROXY global
     }
 
     stages {
@@ -37,8 +35,8 @@ pipeline {
                     npm install
                     npx playwright install chromium
 
-                    export HTTP_PROXY=http://localhost:8080
-                    export HTTPS_PROXY=http://localhost:8080
+                    # Activamos el proxy SOLO para Playwright
+                    export USE_ZAP_PROXY=true
 
                     cd zap-scans/scripts
                     node login-and-browse.js
@@ -67,27 +65,41 @@ pipeline {
     post {
         always {
             script {
+
                 if (fileExists('zap-auth-report.html')) {
-                    archiveArtifacts artifacts: 'zap-auth-report.html'
+                    archiveArtifacts artifacts: 'zap-auth-report.html', fingerprint: true
                     echo "✅ HTML report archived"
+                } else {
+                    unstable("⚠️ HTML report not generated")
                 }
 
                 if (fileExists('zap-auth-report.json')) {
-                    archiveArtifacts artifacts: 'zap-auth-report.json'
+                    archiveArtifacts artifacts: 'zap-auth-report.json', fingerprint: true
                     echo "✅ JSON report archived"
 
-                    def zap = readJSON file: 'zap-auth-report.json'
+                    def raw = readFile('zap-auth-report.json').trim()
+                    if (raw) {
+                        def zap = readJSON text: raw
 
-                    def highs   = zap.site[0].alerts.findAll { it.riskcode == '3' }.size()
-                    def mediums = zap.site[0].alerts.findAll { it.riskcode == '2' }.size()
+                        if (zap.site && zap.site.size() > 0) {
+                            def alerts = zap.site[0].alerts ?: []
 
-                    echo "🛡️ ZAP results → High: ${highs}, Medium: ${mediums}"
+                            def highs   = alerts.findAll { it.riskcode == '3' }.size()
+                            def mediums = alerts.findAll { it.riskcode == '2' }.size()
 
-                    if (highs > 0) {
-                        error("❌ Build FAILED – High risk vulnerabilities detected")
-                    }
-                    if (mediums > 0) {
-                        unstable("⚠️ Build UNSTABLE – Medium risk vulnerabilities detected")
+                            echo "🛡️ ZAP results → High=${highs}, Medium=${mediums}"
+
+                            if (highs > 0) {
+                                error("❌ Build FAILED due to HIGH risk vulnerabilities")
+                            }
+                            if (mediums > 0) {
+                                unstable("⚠️ Build UNSTABLE due to MEDIUM risk vulnerabilities")
+                            }
+                        } else {
+                            unstable("⚠️ ZAP JSON generated but no sites analyzed")
+                        }
+                    } else {
+                        unstable("⚠️ ZAP JSON is empty")
                     }
                 } else {
                     unstable("⚠️ ZAP JSON report not generated")
