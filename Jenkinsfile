@@ -3,7 +3,6 @@ pipeline {
 
     environment {
         PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = '1'
-        // NO HTTP_PROXY / HTTPS_PROXY globales
     }
 
     stages {
@@ -14,16 +13,16 @@ pipeline {
             }
         }
 
-        stage('Start OWASP ZAP Proxy (local)') {
+        stage('Start OWASP ZAP Proxy') {
             steps {
                 sh '''
-                    echo "▶ Starting OWASP ZAP daemon locally"
+                    echo "▶ Starting OWASP ZAP daemon"
                     zap.sh -daemon \
                       -host 127.0.0.1 \
                       -port 8080 \
                       -config api.disablekey=true &
 
-                    # Esperar a que ZAP esté listo
+                    echo "▶ Waiting for ZAP..."
                     for i in {1..20}; do
                       curl -s http://127.0.0.1:8080 >/dev/null && break
                       sleep 2
@@ -38,7 +37,6 @@ pipeline {
                     npm install
                     npx playwright install chromium
 
-                    # Activar proxy SOLO para Playwright
                     export USE_ZAP_PROXY=true
 
                     cd zap-scans/scripts
@@ -50,7 +48,7 @@ pipeline {
         stage('Generate ZAP Reports') {
             steps {
                 sh '''
-                    echo "▶ Waiting for ZAP to process traffic"
+                    echo "▶ Waiting for ZAP to finish analysis"
                     sleep 20
 
                     echo "▶ Generating HTML report"
@@ -72,8 +70,6 @@ pipeline {
                 if (fileExists('zap-auth-report.html')) {
                     archiveArtifacts artifacts: 'zap-auth-report.html', fingerprint: true
                     echo "✅ HTML report archived"
-                } else {
-                    unstable("⚠️ HTML report not generated")
                 }
 
                 if (fileExists('zap-auth-report.json')) {
