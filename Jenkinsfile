@@ -1,28 +1,50 @@
 pipeline {
-    agent {
-        label 'docker'
-    }
+    agent { label 'docker' }
 
     stages {
-        stage('OWASP ZAP Baseline Scan') {
+        stage('Start ZAP Daemon') {
             steps {
                 sh '''
-                    set -e
+                    docker rm -f zap-daemon || true
 
-                    mkdir -p zap-report
-
-                    echo "▶ Running OWASP ZAP Baseline Scan"
-                    docker run --rm \
-                      -u root \
+                    docker run -d \
+                      --name zap-daemon \
                       --network host \
                       --dns 172.16.0.10 \
                       zaproxy/zap-stable \
-                      zap-baseline.py \
-                        -t https://jenkinsvm.quidgest.pt/gqt_horizontal_vue/ \
-                        -r zap-report.html \
-                    | tee zap-report/zap-output.log
+                      zap.sh -daemon \
+                        -host 0.0.0.0 \
+                        -port 8080 \
+                        -config api.disablekey=true
 
-                    mv zap-report.html zap-report/ || true
+                    sleep 20
+                '''
+            }
+        }
+
+        stage('Spider Target') {
+            steps {
+                sh '''
+                    curl "http://localhost:8080/JSON/spider/action/scan/?url=https://jenkinsvm.quidgest.pt/gqt_horizontal_vue/"
+                    sleep 30
+                '''
+            }
+        }
+
+        stage('Passive Scan Wait') {
+            steps {
+                sh '''
+                    echo "Waiting for passive scan to finish"
+                    sleep 30
+                '''
+            }
+        }
+
+        stage('Fetch ZAP JSON Alerts') {
+            steps {
+                sh '''
+                    curl "http://localhost:8080/JSON/core/view/alerts/" \
+                      > zap-report.json
                 '''
             }
         }
@@ -30,19 +52,28 @@ pipeline {
 
     post {
         always {
+            sh '''
+                mkdir -p zap-report
+                mv zap-report.json zap-report/
+            '''
+
+            archiveArtifacts artifacts: 'zap-report/zap-report.json', fingerprint: true
+
+            sh 'docker rm -f zap-daemon || true'
+        }
+
+        success {
             script {
-                if (fileExists('zap-report/zap-output.log') &&
-                    sh(
-                        script: "grep -q 'WARN-NEW:' zap-report/zap-output.log",
-                        returnStatus: true
-                    ) == 0
-                ) {
-                    currentBuild.result = 'UNSTABLE'
-                    echo '⚠️ OWASP ZAP warnings detected'
+                def high = sh(
+                    script: "jq '[.alerts[] | select(.risk == \"High\")] | length' zap-report/zap-report.json",
+                    returnStdout: true
+                ).trim()
+
+                if (high.toInteger() > 0) {
+                    currentBuild.result = 'FAILURE'
+                    echo '❌ High risk vulnerabilities found'
                 }
             }
-
-            archiveArtifacts artifacts: 'zap-report/*', fingerprint: true
         }
     }
 }
