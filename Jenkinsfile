@@ -9,14 +9,11 @@ pipeline {
                 sh '''
                     set -e
 
-                    echo "▶ Moving to ZAP project directory"
                     cd /opt/zap-project
-
-                    echo "▶ Ensuring output directory exists"
                     mkdir -p zap-scans/output
 
-                    echo "▶ Building ZAP baseline image"
-                    docker build -t zap-baseline-scan .
+                    echo "▶ Building ZAP baseline image (offline-safe)"
+                    docker build --pull=false -t zap-baseline-scan .
 
                     echo "▶ Running OWASP ZAP Baseline Scan"
                     docker run --rm \
@@ -53,14 +50,11 @@ pipeline {
                 echo "▶ Collecting ZAP reports"
                 mkdir -p zap-report
 
-                # HTML (según config.json)
-                cp zap-scans/output/zap-report.html zap-report/
-
-                # JSON generado vía API
-                cp "$WORKSPACE/zap-report.json" zap-report/
+                cp zap-scans/output/zap-report.html zap-report/ || true
+                cp "$WORKSPACE/zap-report.json" zap-report/ || true
             '''
 
-            archiveArtifacts artifacts: 'zap-report/zap-report.html, zap-report/zap-report.json', fingerprint: true
+            archiveArtifacts artifacts: 'zap-report/*', fingerprint: true, allowEmptyArchive: true
         }
     }
 }
