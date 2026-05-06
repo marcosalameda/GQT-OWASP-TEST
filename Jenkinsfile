@@ -1,6 +1,13 @@
 pipeline {
     agent { label 'docker' }
 
+    environment {
+        HTTP_PROXY  = 'http://localhost:8080'
+        HTTPS_PROXY = 'http://localhost:8080'
+        NO_PROXY    = 'localhost,127.0.0.1'
+        PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = '1'
+    }
+
     stages {
 
         stage('Checkout') {
@@ -9,23 +16,49 @@ pipeline {
             }
         }
 
-        stage('ZAP Full Scan (Complete Report)') {
+        stage('Start OWASP ZAP Proxy') {
             steps {
                 sh '''
-                    set -e
-
-                    echo "▶ Running ZAP FULL scan (HTML + JSON)"
-
-                    docker run --rm \
-                      -v "$WORKSPACE:/zap/wrk" \
+                    docker rm -f zap-auth-proxy || true
+                    docker run -d --name zap-auth-proxy \
+                      --network host \
                       ghcr.io/zaproxy/zaproxy:stable \
-                      zap-full-scan.py \
-                        -t https://jenkinsvm.quidgest.pt/gqt/vertical_vue/ \
-                        -r zap-full-report.html \
-                        -J zap-full-report.json \
-                        -I
+                      zap.sh -daemon \
+                        -host 0.0.0.0 \
+                        -port 8080 \
+                        -config api.disablekey=true
+                '''
+            }
+        }
 
-                    echo "▶ ZAP full scan finished"
+        stage('Authenticated Navigation (Playwright)') {
+            steps {
+                sh '''
+                    npm install
+                    npx playwright install chromium
+
+                    export HTTP_PROXY=http://localhost:8080
+                    export HTTPS_PROXY=http://localhost:8080
+
+                    cd zap-scans/scripts
+                    node login-and-browse.js
+                '''
+            }
+        }
+
+        stage('Generate ZAP Reports') {
+            steps {
+                sh '''
+                    echo "▶ Waiting for ZAP to process traffic"
+                    sleep 20
+
+                    echo "▶ Generating HTML report"
+                    curl http://localhost:8080/OTHER/core/other/htmlreport/ \
+                      > zap-auth-report.html || true
+
+                    echo "▶ Generating JSON report"
+                    curl http://localhost:8080/OTHER/core/other/jsonreport/ \
+                      > zap-auth-report.json || true
                 '''
             }
         }
@@ -34,20 +67,33 @@ pipeline {
     post {
         always {
             script {
-
-                if (fileExists('zap-full-report.html')) {
-                    archiveArtifacts artifacts: 'zap-full-report.html', fingerprint: true
+                if (fileExists('zap-auth-report.html')) {
+                    archiveArtifacts artifacts: 'zap-auth-report.html'
                     echo "✅ HTML report archived"
-                } else {
-                    echo "⚠️ HTML report not found"
                 }
 
-                if (fileExists('zap-full-report.json')) {
-                    archiveArtifacts artifacts: 'zap-full-report.json', fingerprint: true
+                if (fileExists('zap-auth-report.json')) {
+                    archiveArtifacts artifacts: 'zap-auth-report.json'
                     echo "✅ JSON report archived"
+
+                    def zap = readJSON file: 'zap-auth-report.json'
+
+                    def highs   = zap.site[0].alerts.findAll { it.riskcode == '3' }.size()
+                    def mediums = zap.site[0].alerts.findAll { it.riskcode == '2' }.size()
+
+                    echo "🛡️ ZAP results → High: ${highs}, Medium: ${mediums}"
+
+                    if (highs > 0) {
+                        error("❌ Build FAILED – High risk vulnerabilities detected")
+                    }
+                    if (mediums > 0) {
+                        unstable("⚠️ Build UNSTABLE – Medium risk vulnerabilities detected")
+                    }
                 } else {
-                    echo "⚠️ JSON report not found"
+                    unstable("⚠️ ZAP JSON report not generated")
                 }
+
+                sh 'docker rm -f zap-auth-proxy || true'
             }
         }
     }
