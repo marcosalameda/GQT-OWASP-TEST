@@ -7,10 +7,15 @@ pipeline {
         stage('Run OWASP ZAP Scan') {
             steps {
                 sh '''
+                    set -e
+
+                    echo "▶ Moving to ZAP project directory"
                     cd /opt/zap-project
 
+                    echo "▶ Building ZAP baseline image"
                     docker build -t zap-baseline-scan .
 
+                    echo "▶ Running OWASP ZAP Baseline Scan"
                     docker run --rm \
                       --network host \
                       --dns 172.16.0.10 \
@@ -18,6 +23,10 @@ pipeline {
                       zap-baseline-scan \
                       /zap/wrk/config/config.json \
                     | tee "$WORKSPACE/zap-output.log"
+
+                    echo "▶ Generating ZAP JSON report via API"
+                    curl http://localhost:8080/OTHER/core/other/jsonreport/ \
+                      > zap-scans/output/zap-report.json
                 '''
             }
         }
@@ -26,10 +35,11 @@ pipeline {
     post {
         always {
             script {
+                // Marcar UNSTABLE si hay WARN-NEW
                 if (fileExists("${env.WORKSPACE}/zap-output.log") &&
                     sh(
-                      script: "grep -q 'WARN-NEW: [1-9]' ${env.WORKSPACE}/zap-output.log",
-                      returnStatus: true
+                        script: "grep -q 'WARN-NEW: [1-9]' ${env.WORKSPACE}/zap-output.log",
+                        returnStatus: true
                     ) == 0
                 ) {
                     currentBuild.result = 'UNSTABLE'
@@ -38,11 +48,13 @@ pipeline {
             }
 
             sh '''
+                echo "▶ Collecting ZAP reports"
                 mkdir -p zap-report
-                cp /opt/zap-project/zap-scans/zap-report.html zap-report/
+                cp zap-scans/output/zap-report.html zap-report/
+                cp zap-scans/output/zap-report.json zap-report/
             '''
 
-            archiveArtifacts artifacts: 'zap-report/zap-report.html', fingerprint: true
+            archiveArtifacts artifacts: 'zap-report/zap-report.html, zap-report/zap-report.json', fingerprint: true
         }
     }
 }
