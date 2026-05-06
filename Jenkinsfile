@@ -2,6 +2,7 @@ pipeline {
     agent { label 'docker' }
 
     stages {
+
         stage('Start ZAP Daemon') {
             steps {
                 sh '''
@@ -17,7 +18,17 @@ pipeline {
                         -port 8080 \
                         -config api.disablekey=true
 
-                    sleep 20
+                    echo "Waiting for ZAP API to be ready..."
+                    for i in $(seq 1 30); do
+                      if curl -s http://localhost:8080/JSON/core/view/version/ >/dev/null; then
+                        echo "ZAP is ready"
+                        exit 0
+                      fi
+                      sleep 2
+                    done
+
+                    echo "ZAP did not start in time"
+                    exit 1
                 '''
             }
         }
@@ -25,26 +36,43 @@ pipeline {
         stage('Spider Target') {
             steps {
                 sh '''
-                    curl "http://localhost:8080/JSON/spider/action/scan/?url=https://jenkinsvm.quidgest.pt/gqt_horizontal_vue/"
-                    sleep 30
+                    curl "http://localhost:8080/JSON/spider/action/scan/?url=https://jenkinsvm.quidgest.pt/gqt_horizontal_vue/&recurse=true"
+
+                    echo "Waiting for spider to finish..."
+                    while true; do
+                      STATUS=$(curl -s http://localhost:8080/JSON/spider/view/status/ | jq -r '.status')
+                      [ "$STATUS" = "100" ] && break
+                      sleep 5
+                    done
                 '''
             }
         }
 
-        stage('Passive Scan Wait') {
+        stage('Wait Passive Scan') {
             steps {
                 sh '''
-                    echo "Waiting for passive scan to finish"
-                    sleep 30
+                    echo "Waiting for passive scan to finish..."
+                    while true; do
+                      LEFT=$(curl -s http://localhost:8080/JSON/pscan/view/recordsToScan/ | jq -r '.recordsToScan')
+                      [ "$LEFT" = "0" ] && break
+                      sleep 5
+                    done
                 '''
             }
         }
 
-        stage('Fetch ZAP JSON Alerts') {
+        stage('Generate Reports') {
             steps {
                 sh '''
-                    curl "http://localhost:8080/JSON/core/view/alerts/" \
-                      > zap-report.json
+                    mkdir -p zap-report
+
+                    echo "Generating JSON report"
+                    curl -s http://localhost:8080/JSON/core/view/alerts/ \
+                      > zap-report/zap-report.json
+
+                    echo "Generating HTML report"
+                    curl -s http://localhost:8080/OTHER/core/other/htmlreport/ \
+                      > zap-report/zap-report.html
                 '''
             }
         }
@@ -52,14 +80,8 @@ pipeline {
 
     post {
         always {
-            sh '''
-                mkdir -p zap-report
-                mv zap-report.json zap-report/
-            '''
-
-            archiveArtifacts artifacts: 'zap-report/zap-report.json', fingerprint: true
-
             sh 'docker rm -f zap-daemon || true'
+            archiveArtifacts artifacts: 'zap-report/*', fingerprint: true
         }
 
         success {
@@ -71,7 +93,7 @@ pipeline {
 
                 if (high.toInteger() > 0) {
                     currentBuild.result = 'FAILURE'
-                    echo '❌ High risk vulnerabilities found'
+                    echo '❌ High risk vulnerabilities detected'
                 }
             }
         }
