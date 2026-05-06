@@ -9,12 +9,12 @@ pipeline {
                 sh '''
                     set -e
 
-                    echo "▶ Preparing directories"
-                    mkdir -p zap-work
-                    mkdir -p zap-report
+                    echo "▶ Preparing workspace"
+                    mkdir -p zap-work zap-report
 
-                    echo "▶ Running OWASP ZAP Baseline Scan (NO BUILD)"
+                    echo "▶ Running OWASP ZAP Baseline Scan"
                     docker run --rm \
+                      -u root \
                       --network host \
                       --dns 172.16.0.10 \
                       -v "$(pwd)/zap-work:/zap/wrk" \
@@ -23,16 +23,16 @@ pipeline {
                         -t https://jenkinsvm.quidgest.pt/gqt_horizontal_vue/ \
                         -r zap-report.html
 
-                    echo "▶ Generating ZAP JSON report via API"
+                    echo "▶ Extracting reports"
+                    mv zap-work/zap-report.html zap-report/
+
+                    echo "▶ Generating JSON report via API"
                     docker run --rm \
                       --network host \
                       --dns 172.16.0.10 \
                       zaproxy/zap-stable \
-                      curl http://localhost:8080/OTHER/core/other/jsonreport/ \
-                      > zap-report.json
-
-                    mv zap-work/zap-report.html zap-report/ || true
-                    mv zap-report.json zap-report/ || true
+                      curl -s http://localhost:8080/OTHER/core/other/jsonreport/ \
+                      > zap-report/zap-report.json
                 '''
             }
         }
@@ -41,7 +41,7 @@ pipeline {
     post {
         always {
             script {
-                if (fileExists("zap-report/zap-report.json") &&
+                if (fileExists('zap-report/zap-report.json') &&
                     sh(
                         script: "grep -q 'WARN' zap-report/zap-report.json",
                         returnStatus: true
@@ -52,7 +52,7 @@ pipeline {
                 }
             }
 
-            archiveArtifacts artifacts: 'zap-report/*', fingerprint: true, allowEmptyArchive: false
+            archiveArtifacts artifacts: 'zap-report/*', fingerprint: true
         }
     }
 }
