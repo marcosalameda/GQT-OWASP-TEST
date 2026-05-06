@@ -61,7 +61,7 @@ pipeline {
             }
         }
 
-        stage('Generate Reports') {
+        stage('Generate Reports (JSON + HTML)') {
             steps {
                 sh '''
                     mkdir -p zap-report
@@ -89,11 +89,21 @@ pipeline {
                 def high = sh(
                     script: "jq '[.alerts[] | select(.risk == \"High\")] | length' zap-report/zap-report.json",
                     returnStdout: true
-                ).trim()
+                ).trim().toInteger()
 
-                if (high.toInteger() > 0) {
+                def medium = sh(
+                    script: "jq '[.alerts[] | select(.risk == \"Medium\")] | length' zap-report/zap-report.json",
+                    returnStdout: true
+                ).trim().toInteger()
+
+                if (high > 0) {
                     currentBuild.result = 'FAILURE'
-                    echo '❌ High risk vulnerabilities detected'
+                    echo "❌ Build FAILED: ${high} High risk vulnerabilities found"
+                } else if (medium > 0) {
+                    currentBuild.result = 'UNSTABLE'
+                    echo "⚠️ Build UNSTABLE: ${medium} Medium risk vulnerabilities found"
+                } else {
+                    echo "✅ Build SUCCESS: Only Low / Informational vulnerabilities found"
                 }
             }
         }
