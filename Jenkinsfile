@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = '1'
-        // NO usar HTTP_PROXY / HTTPS_PROXY global
+        // NO HTTP_PROXY / HTTPS_PROXY globales
     }
 
     stages {
@@ -14,17 +14,20 @@ pipeline {
             }
         }
 
-        stage('Start OWASP ZAP Proxy') {
+        stage('Start OWASP ZAP Proxy (local)') {
             steps {
                 sh '''
-                    docker rm -f zap-auth-proxy || true
-                    docker run -d --name zap-auth-proxy \
-                      --network host \
-                      ghcr.io/zaproxy/zaproxy:stable \
-                      zap.sh -daemon \
-                        -host 0.0.0.0 \
-                        -port 8080 \
-                        -config api.disablekey=true
+                    echo "▶ Starting OWASP ZAP daemon locally"
+                    zap.sh -daemon \
+                      -host 127.0.0.1 \
+                      -port 8080 \
+                      -config api.disablekey=true &
+
+                    # Esperar a que ZAP esté listo
+                    for i in {1..20}; do
+                      curl -s http://127.0.0.1:8080 >/dev/null && break
+                      sleep 2
+                    done
                 '''
             }
         }
@@ -35,7 +38,7 @@ pipeline {
                     npm install
                     npx playwright install chromium
 
-                    # Activamos el proxy SOLO para Playwright
+                    # Activar proxy SOLO para Playwright
                     export USE_ZAP_PROXY=true
 
                     cd zap-scans/scripts
@@ -51,11 +54,11 @@ pipeline {
                     sleep 20
 
                     echo "▶ Generating HTML report"
-                    curl http://localhost:8080/OTHER/core/other/htmlreport/ \
+                    curl http://127.0.0.1:8080/OTHER/core/other/htmlreport/ \
                       > zap-auth-report.html || true
 
                     echo "▶ Generating JSON report"
-                    curl http://localhost:8080/OTHER/core/other/jsonreport/ \
+                    curl http://127.0.0.1:8080/OTHER/core/other/jsonreport/ \
                       > zap-auth-report.json || true
                 '''
             }
@@ -78,14 +81,15 @@ pipeline {
                     echo "✅ JSON report archived"
 
                     def raw = readFile('zap-auth-report.json').trim()
+
                     if (raw) {
                         def zap = readJSON text: raw
 
                         if (zap.site && zap.site.size() > 0) {
                             def alerts = zap.site[0].alerts ?: []
 
-                            def highs   = alerts.findAll { it.riskcode == '3' }.size()
-                            def mediums = alerts.findAll { it.riskcode == '2' }.size()
+                            def highs   = alerts.count { it.riskcode == '3' }
+                            def mediums = alerts.count { it.riskcode == '2' }
 
                             echo "🛡️ ZAP results → High=${highs}, Medium=${mediums}"
 
@@ -96,7 +100,7 @@ pipeline {
                                 unstable("⚠️ Build UNSTABLE due to MEDIUM risk vulnerabilities")
                             }
                         } else {
-                            unstable("⚠️ ZAP JSON generated but no sites analyzed")
+                            unstable("⚠️ ZAP ran but no sites were analyzed")
                         }
                     } else {
                         unstable("⚠️ ZAP JSON is empty")
@@ -104,8 +108,6 @@ pipeline {
                 } else {
                     unstable("⚠️ ZAP JSON report not generated")
                 }
-
-                sh 'docker rm -f zap-auth-proxy || true'
             }
         }
     }
