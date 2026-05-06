@@ -8,14 +8,10 @@ pipeline {
             steps {
                 sh '''
                     set -e
-
                     cd /opt/zap-project
-                    mkdir -p zap-scans/output
 
-                    echo "▶ Building ZAP baseline image (offline-safe)"
                     docker build --pull=false -t zap-baseline-scan .
 
-                    echo "▶ Running OWASP ZAP Baseline Scan"
                     docker run --rm \
                       --network host \
                       --dns 172.16.0.10 \
@@ -24,7 +20,6 @@ pipeline {
                       /zap/wrk/config/config.json \
                     | tee "$WORKSPACE/zap-output.log"
 
-                    echo "▶ Generating ZAP JSON report via API"
                     curl -s http://localhost:8080/OTHER/core/other/jsonreport/ \
                       > "$WORKSPACE/zap-report.json"
                 '''
@@ -47,10 +42,12 @@ pipeline {
             }
 
             sh '''
-                echo "▶ Collecting ZAP reports"
                 mkdir -p zap-report
 
-                cp zap-scans/output/zap-report.html zap-report/ || true
+                # ✅ HTML en la ruta REAL
+                cp zap-scans/zap-report.html zap-report/ || true
+
+                # ✅ JSON generado vía API
                 cp "$WORKSPACE/zap-report.json" zap-report/ || true
             '''
 
