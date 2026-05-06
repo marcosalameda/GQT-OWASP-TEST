@@ -20,7 +20,7 @@ pipeline {
                       -v "$WORKSPACE:/zap/wrk" \
                       ghcr.io/zaproxy/zaproxy:stable \
                       zap-full-scan.py \
-                        -t https://TU_APP_BASE_URL \
+                        -t https://jenkinsvm.quidgest.pt/gqt/vertical_vue/ \
                         -r zap-full-report.html \
                         -J zap-full-report.json \
                         -I
