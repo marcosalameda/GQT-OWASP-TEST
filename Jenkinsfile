@@ -9,30 +9,20 @@ pipeline {
                 sh '''
                     set -e
 
-                    echo "▶ Preparing workspace"
-                    mkdir -p zap-work zap-report
+                    mkdir -p zap-report
 
                     echo "▶ Running OWASP ZAP Baseline Scan"
                     docker run --rm \
                       -u root \
                       --network host \
                       --dns 172.16.0.10 \
-                      -v "$(pwd)/zap-work:/zap/wrk" \
                       zaproxy/zap-stable \
                       zap-baseline.py \
                         -t https://jenkinsvm.quidgest.pt/gqt_horizontal_vue/ \
-                        -r zap-report.html
+                        -r zap-report.html \
+                    | tee zap-report/zap-output.log
 
-                    echo "▶ Extracting reports"
-                    mv zap-work/zap-report.html zap-report/
-
-                    echo "▶ Generating JSON report via API"
-                    docker run --rm \
-                      --network host \
-                      --dns 172.16.0.10 \
-                      zaproxy/zap-stable \
-                      curl -s http://localhost:8080/OTHER/core/other/jsonreport/ \
-                      > zap-report/zap-report.json
+                    mv zap-report.html zap-report/ || true
                 '''
             }
         }
@@ -41,9 +31,9 @@ pipeline {
     post {
         always {
             script {
-                if (fileExists('zap-report/zap-report.json') &&
+                if (fileExists('zap-report/zap-output.log') &&
                     sh(
-                        script: "grep -q 'WARN' zap-report/zap-report.json",
+                        script: "grep -q 'WARN-NEW:' zap-report/zap-output.log",
                         returnStatus: true
                     ) == 0
                 ) {
