@@ -26,7 +26,7 @@ pipeline {
 
                     npx playwright install chromium
 
-                    echo "▶ Starting ZAP proxy"
+                    echo "▶ Starting ZAP proxy (daemon)"
                     docker rm -f zap-auth-proxy || true
                     docker run -d \
                       --name zap-auth-proxy \
@@ -37,19 +37,29 @@ pipeline {
                       -port 8080 \
                       -config api.disablekey=true
 
-                    echo "▶ Waiting for ZAP proxy"
+                    echo "▶ Waiting for ZAP proxy to be ready"
                     for i in {1..30}; do
-                      curl -s http://localhost:8080 && break
+                      curl -s http://localhost:8080 >/dev/null && break
                       sleep 2
                     done
 
-                    echo "▶ Running Playwright login + browse (env creds)"
+                    echo "▶ Running Playwright login + browse (auth traffic)"
                     cd zap-scans/scripts
-                    node login-and-browse.js || echo "⚠️ Playwright login failed"
+                    node login-and-browse.js || echo "⚠️ Playwright login failed, continuing scan"
 
+                    echo "▶ Giving ZAP time to process traffic"
                     sleep 20
 
-                    echo "▶ Fetching ZAP alerts JSON"
+                    echo "▶ Running ZAP active scan"
+                    curl "http://localhost:8080/JSON/ascan/action/scan/?url=https://TU_APP_BASE_URL&recurse=true" || true
+
+                    sleep 30
+
+                    echo "▶ Attempting to generate ZAP HTML report"
+                    curl http://localhost:8080/OTHER/core/other/htmlreport/ \
+                      > "$WORKSPACE/zap-auth-report.html" || true
+
+                    echo "▶ Saving ZAP alerts JSON (fallback / validation)"
                     curl -s http://localhost:8080/JSON/core/view/alerts/ \
                       -o "$WORKSPACE/zap-auth-report.json" || true
                 '''
@@ -60,6 +70,17 @@ pipeline {
     post {
         always {
             script {
+
+                if (fileExists('zap-auth-report.html') &&
+                    readFile('zap-auth-report.html').trim()) {
+
+                    echo "✅ ZAP HTML report generated"
+                    archiveArtifacts artifacts: 'zap-auth-report.html', fingerprint: true
+
+                } else {
+                    echo "⚠️ ZAP HTML report not generated (daemon limitation)"
+                }
+
                 if (fileExists('zap-auth-report.json') &&
                     readFile('zap-auth-report.json').trim()) {
 
@@ -75,13 +96,14 @@ pipeline {
                     echo "  🟡 Low:    ${lows}"
 
                     if (highs > 0) {
-                        error("❌ Build FAILED (HIGH findings)")
+                        error("❌ Build FAILED due to HIGH risk vulnerabilities")
                     }
                     if (mediums > 0) {
-                        unstable("⚠️ Build UNSTABLE (MEDIUM findings)")
+                        unstable("⚠️ Build UNSTABLE due to MEDIUM risk vulnerabilities")
                     }
+
                 } else {
-                    echo "⚠️ ZAP report not available"
+                    echo "⚠️ ZAP JSON report not available"
                 }
             }
         }
