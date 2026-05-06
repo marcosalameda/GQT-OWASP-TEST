@@ -12,6 +12,9 @@ pipeline {
                     echo "▶ Moving to ZAP project directory"
                     cd /opt/zap-project
 
+                    echo "▶ Ensuring output directory exists"
+                    mkdir -p zap-scans/output
+
                     echo "▶ Building ZAP baseline image"
                     docker build -t zap-baseline-scan .
 
@@ -50,8 +53,8 @@ pipeline {
                 echo "▶ Collecting ZAP reports"
                 mkdir -p zap-report
 
-                # HTML generado por ZAP en el volumen
-                cp zap-scans/zap-report.html zap-report/
+                # HTML (según config.json)
+                cp zap-scans/output/zap-report.html zap-report/
 
                 # JSON generado vía API
                 cp "$WORKSPACE/zap-report.json" zap-report/
