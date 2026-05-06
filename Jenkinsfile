@@ -44,8 +44,8 @@ pipeline {
             sh '''
                 mkdir -p zap-report
 
-                # ✅ HTML en la ruta REAL
-                cp zap-scans/zap-report.html zap-report/ || true
+                # ✅ HTML (ruta real fuera del workspace)
+                cp /opt/zap-project/zap-scans/zap-report.html zap-report/ || true
 
                 # ✅ JSON generado vía API
                 cp "$WORKSPACE/zap-report.json" zap-report/ || true
