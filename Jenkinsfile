@@ -25,8 +25,8 @@ pipeline {
                     | tee "$WORKSPACE/zap-output.log"
 
                     echo "▶ Generating ZAP JSON report via API"
-                    curl http://localhost:8080/OTHER/core/other/jsonreport/ \
-                      > zap-scans/output/zap-report.json
+                    curl -s http://localhost:8080/OTHER/core/other/jsonreport/ \
+                      > "$WORKSPACE/zap-report.json"
                 '''
             }
         }
@@ -35,7 +35,6 @@ pipeline {
     post {
         always {
             script {
-                // Marcar UNSTABLE si hay WARN-NEW
                 if (fileExists("${env.WORKSPACE}/zap-output.log") &&
                     sh(
                         script: "grep -q 'WARN-NEW: [1-9]' ${env.WORKSPACE}/zap-output.log",
@@ -50,8 +49,12 @@ pipeline {
             sh '''
                 echo "▶ Collecting ZAP reports"
                 mkdir -p zap-report
-                cp zap-scans/output/zap-report.html zap-report/
-                cp zap-scans/output/zap-report.json zap-report/
+
+                # HTML generado por ZAP en el volumen
+                cp zap-scans/zap-report.html zap-report/
+
+                # JSON generado vía API
+                cp "$WORKSPACE/zap-report.json" zap-report/
             '''
 
             archiveArtifacts artifacts: 'zap-report/zap-report.html, zap-report/zap-report.json', fingerprint: true
