@@ -16,7 +16,7 @@ const { chromium } = require('playwright');
   const BASE_URL = 'https://jenkinsvm.quidgest.pt/gqt_vertical_vue/';
   const LOGIN_URL = BASE_URL;
 
-  // Enable ZAP proxy only when explicitly requested
+  // Proxy control (ONLY browser-level, never global)
   const useProxy = process.env.USE_ZAP_PROXY === 'true';
 
   const contextOptions = {
@@ -34,7 +34,10 @@ const { chromium } = require('playwright');
      LAUNCH BROWSER
      ===================================================== */
 
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({
+    headless: true
+  });
+
   const context = await browser.newContext(contextOptions);
   const page = await context.newPage();
 
@@ -46,7 +49,7 @@ const { chromium } = require('playwright');
   await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded' });
   await page.waitForLoadState('networkidle');
 
-  // Screenshot for diagnostics
+  // Diagnostic screenshot (useful if login fails)
   await page.screenshot({ path: 'login-error.png', fullPage: true });
 
   // Detect iframe if present
@@ -107,7 +110,7 @@ const { chromium } = require('playwright');
   for (const route of routes) {
     console.log(`  → ${route}`);
     await page.goto(`${baseHash}${route}`, { waitUntil: 'networkidle' });
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(2000); // give ZAP time to process traffic
   }
 
   /* =====================================================
