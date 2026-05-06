@@ -24,7 +24,7 @@ const { chromium } = require('playwright');
   };
 
   if (useProxy) {
-    contextOptions.proxy = { server: 'http://localhost:8080' };
+    contextOptions.proxy = { server: 'http://172.16.0.62:8080' };
     console.log('▶ ZAP proxy ENABLED');
   } else {
     console.log('▶ ZAP proxy DISABLED');
