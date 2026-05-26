@@ -82,10 +82,9 @@ pipeline {
                     returnStdout: true
                 ).trim().toInteger()
 
-                // Contar vulnerabilidades Medium ignorando las especificadas
-                // Usamos doble backslash \\" para escapar las comillas dentro de la cadena de Groovy
+                // Contar vulnerabilidades Medium ignorando los nombres exactos especificados
                 def medium = sh(
-                    script: 'jq "[.alerts[] | select(.risk == \\"Medium\\" and ([.alert] | inside([\\"Script Transport\\", \\"Content Security Policy Header Not Set\\"]) | not))] | length" zap-report/zap-report.json',
+                    script: 'jq "[.alerts[] | select(.risk == \\"Medium\\" and ([.alert] | inside([\\"Content Security Policy (CSP) Header Not Set\\", \\"Strict-Transport-Security Header Not Set\\"]) | not))] | length" zap-report/zap-report.json',
                     returnStdout: true
                 ).trim().toInteger()
 
