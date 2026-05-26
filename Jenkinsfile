@@ -123,7 +123,6 @@ pipeline {
 
             script {
 
-                // Contar High excluyendo falsos negativos
                 def high = sh(
                     script: '''
                         jq '[.alerts[]
@@ -135,7 +134,6 @@ pipeline {
                     returnStdout: true
                 ).trim().toInteger()
 
-                // Contar Medium excluyendo falsos negativos
                 def medium = sh(
                     script: '''
                         jq '[.alerts[]
@@ -147,31 +145,25 @@ pipeline {
                     returnStdout: true
                 ).trim().toInteger()
 
-                // Mostrar que alertas fueron ignoradas como falsos negativos
-                def falseNegativesList = sh(
-                    script: '''
-                        jq -r '[.alerts[]
-                            | select(
-                                .alert == "Content Security Policy (CSP) Header Not Set"
-                                or .alert == "Strict-Transport-Security Header Not Set"
-                            )
-                            | {alert: .alert, risk: .risk}
-                        ] | unique | .[] | "  - \(.risk): \(.alert)"' \
-                        zap-report/zap-report.json
-                    ''',
-                    returnStdout: true
-                ).trim()
-
-                echo "⚠️ Falsos negativos (excluidos del resultado):\n${falseNegativesList}"
+                sh '''
+                    echo "Falsos negativos excluidos del resultado:"
+                    jq -r '.alerts[]
+                        | select(
+                            .alert == "Content Security Policy (CSP) Header Not Set"
+                            or .alert == "Strict-Transport-Security Header Not Set"
+                        )
+                        | "  - " + .risk + ": " + .alert' \
+                        zap-report/zap-report.json | sort | uniq
+                '''
 
                 if (high > 0) {
                     currentBuild.result = 'FAILURE'
-                    echo "❌ Build FAILED: ${high} vulnerabilidades High encontradas"
+                    echo "Build FAILED: ${high} vulnerabilidades High encontradas"
                 } else if (medium > 0) {
                     currentBuild.result = 'UNSTABLE'
-                    echo "⚠️ Build UNSTABLE: ${medium} vulnerabilidades Medium encontradas"
+                    echo "Build UNSTABLE: ${medium} vulnerabilidades Medium encontradas"
                 } else {
-                    echo "✅ Build SUCCESS: Solo vulnerabilidades Low / Informational encontradas"
+                    echo "Build SUCCESS: Solo vulnerabilidades Low / Informational encontradas"
                 }
 
             }
