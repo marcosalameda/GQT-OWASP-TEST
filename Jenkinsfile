@@ -2,12 +2,10 @@ pipeline {
     agent { label 'docker' }
 
     stages {
-
         stage('Start ZAP Daemon') {
             steps {
                 sh '''
                     docker rm -f zap-daemon || true
-
                     docker run -d \
                       --name zap-daemon \
                       --network host \
@@ -26,7 +24,6 @@ pipeline {
                       fi
                       sleep 2
                     done
-
                     echo "ZAP did not start in time"
                     exit 1
                 '''
@@ -37,7 +34,6 @@ pipeline {
             steps {
                 sh '''
                     curl "http://localhost:8080/JSON/spider/action/scan/?url=https://jenkinsvm.quidgest.pt/gqt_horizontal_vue/&recurse=true"
-
                     echo "Waiting for spider to finish..."
                     while true; do
                       STATUS=$(curl -s http://localhost:8080/JSON/spider/view/status/ | jq -r '.status')
@@ -61,18 +57,12 @@ pipeline {
             }
         }
 
-        stage('Generate Reports (JSON + HTML)') {
+        stage('Generate Reports') {
             steps {
                 sh '''
                     mkdir -p zap-report
-
-                    echo "Generating JSON report"
-                    curl -s http://localhost:8080/JSON/core/view/alerts/ \
-                      > zap-report/zap-report.json
-
-                    echo "Generating HTML report"
-                    curl -s http://localhost:8080/OTHER/core/other/htmlreport/ \
-                      > zap-report/zap-report.html
+                    curl -s http://localhost:8080/JSON/core/view/alerts/ > zap-report/zap-report.json
+                    curl -s http://localhost:8080/OTHER/core/other/htmlreport/ > zap-report/zap-report.html
                 '''
             }
         }
@@ -86,20 +76,16 @@ pipeline {
 
         success {
             script {
-                // 1. Contamos las de riesgo High (estas NO las filtramos, siempre cuentan)
+                // Contar vulnerabilidades de riesgo High
                 def high = sh(
-                    script: "jq '[.alerts[] | select(.risk == \"High\")] | length' zap-report/zap-report.json",
+                    script: 'jq "[.alerts[] | select(.risk == \\"High\\")] | length" zap-report/zap-report.json',
                     returnStdout: true
                 ).trim().toInteger()
 
-                // 2. Contamos las de riesgo Medium, pero ignorando las que especificaste
-                // Nota: Usamos el operador 'inside' para excluir las alertas por su nombre exacto
+                // Contar vulnerabilidades Medium ignorando las especificadas
+                // Usamos doble backslash \\" para escapar las comillas dentro de la cadena de Groovy
                 def medium = sh(
-                    script: """
-                        jq '[.alerts[] | select(.risk == \"Medium\" and 
-                        ([.alert] | inside([\"Script Transport\", \"Content Security Policy Header Not Set\"]) | not))] | length' 
-                        zap-report/zap-report.json
-                    """,
+                    script: 'jq "[.alerts[] | select(.risk == \\"Medium\\" and ([.alert] | inside([\\"Script Transport\\", \\"Content Security Policy Header Not Set\\"]) | not))] | length" zap-report/zap-report.json',
                     returnStdout: true
                 ).trim().toInteger()
 
@@ -108,9 +94,9 @@ pipeline {
                     echo "❌ Build FAILED: ${high} High risk vulnerabilities found"
                 } else if (medium > 0) {
                     currentBuild.result = 'UNSTABLE'
-                    echo "⚠️ Build UNSTABLE: ${medium} Medium risk vulnerabilities found (después de aplicar filtros)"
+                    echo "⚠️ Build UNSTABLE: ${medium} Medium risk vulnerabilities found (después de filtrar las ignoradas)"
                 } else {
-                    echo "✅ Build SUCCESS: No se encontraron vulnerabilidades que requieran atención inmediata."
+                    echo "✅ Build SUCCESS"
                 }
             }
         }
