@@ -123,46 +123,46 @@ pipeline {
 
             script {
 
-                // Alertas excluidas del resultado del build (falsos negativos conocidos)
-                def falseNegatives = [
-                    "Content Security Policy (CSP) Header Not Set",
-                    "Strict-Transport-Security Header Not Set",
-                ]
-
-                // Escribir la lista a un fichero para usarla en jq sin interpolacion de Groovy
-                writeFile file: 'zap-report/false-negatives.json', text: groovy.json.JsonOutput.toJson(falseNegatives)
-
+                // Contar High excluyendo falsos negativos
                 def high = sh(
                     script: '''
-                        FN=$(cat zap-report/false-negatives.json)
-                        jq --argjson fn "$FN" \
-                          '[.alerts[] | select(.risk == "High") | select(.alert as $a | $fn | map(. == $a) | any | not)] | length' \
-                          zap-report/zap-report.json
+                        jq '[.alerts[]
+                            | select(.risk == "High")
+                            | select(.alert != "Content Security Policy (CSP) Header Not Set")
+                            | select(.alert != "Strict-Transport-Security Header Not Set")
+                        ] | length' zap-report/zap-report.json
                     ''',
                     returnStdout: true
                 ).trim().toInteger()
 
+                // Contar Medium excluyendo falsos negativos
                 def medium = sh(
                     script: '''
-                        FN=$(cat zap-report/false-negatives.json)
-                        jq --argjson fn "$FN" \
-                          '[.alerts[] | select(.risk == "Medium") | select(.alert as $a | $fn | map(. == $a) | any | not)] | length' \
-                          zap-report/zap-report.json
+                        jq '[.alerts[]
+                            | select(.risk == "Medium")
+                            | select(.alert != "Content Security Policy (CSP) Header Not Set")
+                            | select(.alert != "Strict-Transport-Security Header Not Set")
+                        ] | length' zap-report/zap-report.json
                     ''',
                     returnStdout: true
                 ).trim().toInteger()
 
+                // Mostrar que alertas fueron ignoradas como falsos negativos
                 def falseNegativesList = sh(
                     script: '''
-                        FN=$(cat zap-report/false-negatives.json)
-                        jq --argjson fn "$FN" \
-                          '[.alerts[] | select(.alert as $a | $fn | map(. == $a) | any) | {alert: .alert, risk: .risk}] | unique' \
-                          zap-report/zap-report.json
+                        jq -r '[.alerts[]
+                            | select(
+                                .alert == "Content Security Policy (CSP) Header Not Set"
+                                or .alert == "Strict-Transport-Security Header Not Set"
+                            )
+                            | {alert: .alert, risk: .risk}
+                        ] | unique | .[] | "  - \(.risk): \(.alert)"' \
+                        zap-report/zap-report.json
                     ''',
                     returnStdout: true
                 ).trim()
 
-                echo "⚠️ Falsos negativos excluidos del resultado:\n${falseNegativesList}"
+                echo "⚠️ Falsos negativos (excluidos del resultado):\n${falseNegativesList}"
 
                 if (high > 0) {
                     currentBuild.result = 'FAILURE'
