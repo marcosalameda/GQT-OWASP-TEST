@@ -86,13 +86,20 @@ pipeline {
 
         success {
             script {
+                // 1. Contamos las de riesgo High (estas NO las filtramos, siempre cuentan)
                 def high = sh(
                     script: "jq '[.alerts[] | select(.risk == \"High\")] | length' zap-report/zap-report.json",
                     returnStdout: true
                 ).trim().toInteger()
 
+                // 2. Contamos las de riesgo Medium, pero ignorando las que especificaste
+                // Nota: Usamos el operador 'inside' para excluir las alertas por su nombre exacto
                 def medium = sh(
-                    script: "jq '[.alerts[] | select(.risk == \"Medium\")] | length' zap-report/zap-report.json",
+                    script: """
+                        jq '[.alerts[] | select(.risk == \"Medium\" and 
+                        ([.alert] | inside([\"Script Transport\", \"Content Security Policy Header Not Set\"]) | not))] | length' 
+                        zap-report/zap-report.json
+                    """,
                     returnStdout: true
                 ).trim().toInteger()
 
@@ -101,11 +108,10 @@ pipeline {
                     echo "❌ Build FAILED: ${high} High risk vulnerabilities found"
                 } else if (medium > 0) {
                     currentBuild.result = 'UNSTABLE'
-                    echo "⚠️ Build UNSTABLE: ${medium} Medium risk vulnerabilities found"
+                    echo "⚠️ Build UNSTABLE: ${medium} Medium risk vulnerabilities found (después de aplicar filtros)"
                 } else {
-                    echo "✅ Build SUCCESS: Only Low / Informational vulnerabilities found"
+                    echo "✅ Build SUCCESS: No se encontraron vulnerabilidades que requieran atención inmediata."
                 }
             }
         }
     }
-}
