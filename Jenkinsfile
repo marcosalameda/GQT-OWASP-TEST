@@ -1,6 +1,6 @@
 pipeline {
+ 
     agent { label 'docker' }
-
     stages {
         stage('Start ZAP Daemon') {
             steps {
@@ -15,7 +15,7 @@ pipeline {
                         -host 0.0.0.0 \
                         -port 8080 \
                         -config api.disablekey=true
-
+ 
                     echo "Waiting for ZAP API to be ready..."
                     for i in $(seq 1 30); do
                       if curl -s http://localhost:8080/JSON/core/view/version/ >/dev/null; then
@@ -24,16 +24,23 @@ pipeline {
                       fi
                       sleep 2
                     done
+ 
+ 
+ 
                     echo "ZAP did not start in time"
                     exit 1
                 '''
             }
         }
-
         stage('Spider Target') {
+ 
             steps {
+ 
                 sh '''
                     curl "http://localhost:8080/JSON/spider/action/scan/?url=https://jenkinsvm.quidgest.pt/gqt_horizontal_vue/&recurse=true"
+ 
+ 
+ 
                     echo "Waiting for spider to finish..."
                     while true; do
                       STATUS=$(curl -s http://localhost:8080/JSON/spider/view/status/ | jq -r '.status')
@@ -43,9 +50,12 @@ pipeline {
                 '''
             }
         }
-
+ 
+ 
+ 
         stage('Wait Passive Scan') {
             steps {
+ 
                 sh '''
                     echo "Waiting for passive scan to finish..."
                     while true; do
@@ -56,46 +66,66 @@ pipeline {
                 '''
             }
         }
-
-        stage('Generate Reports') {
+ 
+        stage('Generate Reports (JSON + HTML)') {
+ 
             steps {
+ 
                 sh '''
-                    mkdir -p zap-report
-                    curl -s http://localhost:8080/JSON/core/view/alerts/ > zap-report/zap-report.json
-                    curl -s http://localhost:8080/OTHER/core/other/htmlreport/ > zap-report/zap-report.html
+                    mkdir -p zap-report 
+                    echo "Generating JSON report"
+                    curl -s http://localhost:8080/JSON/core/view/alerts/ \
+                      > zap-report/zap-report.json
+ 
+ 
+ 
+                    echo "Generating HTML report"
+                    curl -s http://localhost:8080/OTHER/core/other/htmlreport/ \
+                      > zap-report/zap-report.html
                 '''
             }
-        }
+        } 
     }
-
     post {
         always {
+ 
             sh 'docker rm -f zap-daemon || true'
-            archiveArtifacts artifacts: 'zap-report/*', fingerprint: true
+            archiveArtifacts artifacts: 'zap-report/zap-report.json, zap-report/zap-report.html', fingerprint: true
         }
-
         success {
+ 
             script {
-                // Contar vulnerabilidades de riesgo High
+ 
+                def falsePositiveNames = [
+                    "Content Security Policy (CSP) Header Not Set",
+                    "Strict-Transport-Security Header Not Set"
+                ]
+ 
                 def high = sh(
-                    script: 'jq "[.alerts[] | select(.risk == \\"High\\")] | length" zap-report/zap-report.json',
+                    script: """jq '[.alerts[] | select(.risk == "High") | select(.alert as \$a | ${groovy.json.JsonOutput.toJson(falsePositiveNames)} | map(. == \$a) | any | not)] | length' zap-report/zap-report.json""",
                     returnStdout: true
                 ).trim().toInteger()
-
-                // Contar vulnerabilidades Medium ignorando los nombres exactos especificados
+ 
                 def medium = sh(
-                    script: 'jq "[.alerts[] | select(.risk == \\"Medium\\" and ([.alert] | inside([\\"Content Security Policy (CSP) Header Not Set\\", \\"Strict-Transport-Security Header Not Set\\"]) | not))] | length" zap-report/zap-report.json',
+                    script: """jq '[.alerts[] | select(.risk == "Medium") | select(.alert as \$a | ${groovy.json.JsonOutput.toJson(falsePositiveNames)} | map(. == \$a) | any | not)] | length' zap-report/zap-report.json""",
                     returnStdout: true
                 ).trim().toInteger()
-
+ 
+                def falsePositives = sh(
+                    script: """jq '[.alerts[] | select(.alert as \$a | ${groovy.json.JsonOutput.toJson(falsePositiveNames)} | map(. == \$a) | any) | {alert: .alert, risk: .risk}] | unique' zap-report/zap-report.json""",
+                    returnStdout: true
+                ).trim()
+ 
+                echo "⚠️ False negatives (excluded from result):\n${falsePositives}"
+ 
                 if (high > 0) {
                     currentBuild.result = 'FAILURE'
                     echo "❌ Build FAILED: ${high} High risk vulnerabilities found"
                 } else if (medium > 0) {
                     currentBuild.result = 'UNSTABLE'
-                    echo "⚠️ Build UNSTABLE: ${medium} Medium risk vulnerabilities found (después de filtrar las ignoradas)"
+                    echo "⚠️ Build UNSTABLE: ${medium} Medium risk vulnerabilities found"
                 } else {
-                    echo "✅ Build SUCCESS"
+                    echo "✅ Build SUCCESS: Only Low / Informational vulnerabilities found"
                 }
             }
         }
