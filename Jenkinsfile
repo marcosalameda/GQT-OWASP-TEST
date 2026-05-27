@@ -49,7 +49,7 @@ pipeline {
             steps {
 
                 sh '''
-                    curl "http://localhost:8080/JSON/spider/action/scan/?url=https://jenkinsvm.quidgest.pt/gqt_horizontal_vue/&recurse=true"
+                    curl "http://localhost:8080/JSON/spider/action/scan/?url=https://jenkinsvm.quidgest.pt/gqt_vertical_vue/&recurse=true"
 
                     echo "Waiting for spider to finish..."
                     while true; do
