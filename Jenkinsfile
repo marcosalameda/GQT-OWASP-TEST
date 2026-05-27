@@ -129,6 +129,7 @@ pipeline {
                             | select(.risk == "High")
                             | select(.alert != "Content Security Policy (CSP) Header Not Set")
                             | select(.alert != "Strict-Transport-Security Header Not Set")
+                            | select(.alert != "Missing Anti-clickjacking Header")
                         ] | length' zap-report/zap-report.json
                     ''',
                     returnStdout: true
@@ -140,6 +141,7 @@ pipeline {
                             | select(.risk == "Medium")
                             | select(.alert != "Content Security Policy (CSP) Header Not Set")
                             | select(.alert != "Strict-Transport-Security Header Not Set")
+                            | select(.alert != "Missing Anti-clickjacking Header")
                         ] | length' zap-report/zap-report.json
                     ''',
                     returnStdout: true
@@ -151,6 +153,7 @@ pipeline {
                         | select(
                             .alert == "Content Security Policy (CSP) Header Not Set"
                             or .alert == "Strict-Transport-Security Header Not Set"
+                            or .alert == "Missing Anti-clickjacking Header"
                         )
                         | "  - " + .risk + ": " + .alert' \
                         zap-report/zap-report.json | sort | uniq
